@@ -1,14 +1,12 @@
-import os
 import torch
 import torch.nn as nn
 
 from src.data.build import build_dataloaders
 from src.models.build import build_model
-from src.engine.trainer import train_one_epoch
-from src.engine.evaluator import evaluate
-from src.engine.checkpoint import save_checkpoint, load_checkpoint
+from src.engine.trainer import fit
+from src.engine.checkpoint import load_checkpoint
 
-from src.utils.logger import get_logger, log_metrics_to_wandb
+from src.utils.logger import get_logger
 from src.utils.seed import set_seed
 from src.utils.metric import MeanIoU
 
@@ -17,13 +15,17 @@ def main(cfg):
     # -------------------------
     # 1. 기본 설정
     # -------------------------
-    set_seed(cfg.seed)
-    device = torch.device(cfg.device)
-    
-    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda"))
+    set_seed(cfg.runtime.seed)
+
+    device = torch.device(
+        cfg.runtime.device if torch.cuda.is_available() else "cpu"
+    )
 
     logger = get_logger()
     logger.info(f"Using device: {device}")
+
+    use_amp = bool(getattr(cfg.training, "amp", True)) and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     # -------------------------
     # 2. Dataset / Dataloader
@@ -37,15 +39,21 @@ def main(cfg):
     model = model.to(device)
 
     # -------------------------
-    # 4. Loss / Optimizer
+    # 4. Loss / Metric
     # -------------------------
-    criterion = nn.CrossEntropyLoss(ignore_index=cfg.training.ignore_index)
-
-    metric = MeanIoU(
-        num_classes=cfg.data.num_classes,
-        ignore_index=cfg.training.ignore_index,
+    criterion = nn.CrossEntropyLoss(
+        ignore_index=cfg.data.ignore_index
     )
 
+    metric = MeanIoU(
+        num_classes=cfg.model.num_classes,
+        ignore_index=cfg.data.ignore_index,
+        device=device,
+    )
+
+    # -------------------------
+    # 5. Optimizer
+    # -------------------------
     optimizer = torch.optim.AdamW(
         [
             {"params": model.backbone.parameters(), "lr": cfg.training.backbone_lr},
@@ -60,111 +68,80 @@ def main(cfg):
         ],
         weight_decay=cfg.training.weight_decay,
     )
+
     # -------------------------
-    # 5. Resume
+    # 6. Scheduler
+    # -------------------------
+    scheduler = None
+
+    scheduler_name = getattr(cfg.training, "scheduler", "none").lower()
+
+    if scheduler_name == "exponential":
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer,
+            gamma=cfg.training.lr_decay,
+        )
+    elif scheduler_name in ["none", ""]:
+        scheduler = None
+    else:
+        raise ValueError(f"Unsupported scheduler: {cfg.training.scheduler}")
+
+    # -------------------------
+    # 7. Resume
     # -------------------------
     start_epoch = 0
-    best_miou = 0
+    best_val_miou = 0.0
+    history = None
 
-    if cfg.checkpoint.resume_path:
-        start_epoch, best_miou, history, _ = load_checkpoint(
-            cfg.checkpoint.resume_path,
-            model,
-            optimizer
+    resume_path = getattr(cfg.checkpoint, "resume_path", "")
+
+    if resume_path:
+        logger.info(f"Resuming from checkpoint: {resume_path}")
+
+        start_epoch, best_val_miou, history, _ = load_checkpoint(
+            load_path=resume_path,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            map_location=device,
+        )
+
+        logger.info(
+            f"Resume success. "
+            f"start_epoch={start_epoch}, "
+            f"best_val_miou={best_val_miou:.4f}"
         )
 
     # -------------------------
-    # 6. Training Loop
+    # 8. Training
     # -------------------------
-    for epoch in range(start_epoch, cfg.training.epochs):
-        logger.info(f"Epoch [{epoch+1}/{cfg.training.epochs}]")
+    result = fit(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        metric=metric,
+        device=device,
+        cfg=cfg,
+        scheduler=scheduler,
+        scaler=scaler,
+        start_epoch=start_epoch,
+        best_val_miou=best_val_miou,
+        history=history,
+    )
 
-        train_result = train_one_epoch(
-            model=model,
-            train_loader=train_loader,
-            criterion=criterion,
-            optimizer=optimizer,
-            device=device,
-            epoch=epoch,
-            cfg=cfg,
-            scaler=scaler
-        )
+    logger.info(
+        f"Training finished. "
+        f"Best val mIoU: {result['best_val_miou']:.4f}"
+    )
 
-        train_loss = train_result["loss"]
-
-        logger.info(f"Train Loss: {train_loss:.4f}")
-        
-        log_metrics_to_wandb(
-            epoch=epoch + 1,
-            train_metrics=train_result,
-            optimizer=optimizer,
-        )
-
-        # -------------------------
-        # 7. Validation
-        # -------------------------
-        if (epoch + 1) % cfg.training.eval_interval == 0:
-            val_result = evaluate(
-                model=model,
-                val_loader=val_loader,
-                criterion=criterion,
-                metric=metric,
-                device=device,
-                cfg=cfg,
-                desc=f"Validation Epoch {epoch + 1}",
-            )
-
-            miou = val_result["miou"]
-            val_loss = val_result["loss"]
-
-            logger.info(f"Val Loss: {val_loss:.4f}")
-            logger.info(f"Val mIoU: {miou:.4f}")
-
-            log_metrics_to_wandb(
-                epoch=epoch + 1,
-                train_metrics=train_result,
-                val_metrics={
-                    "loss": val_loss,
-                    "miou": miou,
-                    "best_miou": max(best_miou, miou),
-                },
-                optimizer=optimizer,
-            )
-
-            # best 저장
-            if miou > best_miou:
-                best_path = os.path.join(cfg.checkpoint.save_dir, "best.pth")
-                last_path = os.path.join(cfg.checkpoint.save_dir, "last.pth")
-                best_miou = miou
-                save_checkpoint(
-                    save_path=best_path,
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    best_val_miou=best_miou,
-                )
-                save_checkpoint(
-                    save_path=last_path,
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    best_val_miou=best_miou,
-                )
-
-        # last 저장
-        last_path = os.path.join(cfg.checkpoint.save_dir, "last.pth")
-        save_checkpoint(
-            save_path=last_path,
-            model=model,
-            optimizer=optimizer,
-            epoch=epoch,
-            best_val_miou=best_miou,
-        )
-
-    logger.info("Training Finished")
+    return result
 
 
 if __name__ == "__main__":
-    from src.config import load_config
-    cfg = load_config()
+    from src.config.config import load_config
+
+    cfg = load_config("src/config/default.yaml")
     main(cfg)

@@ -213,30 +213,3 @@ def show_prediction(
 
     plt.tight_layout()
     plt.show()
-
-
-def save_prediction_png(
-    pred_mask,
-    save_path,
-    palette=VOC_PALETTE,
-):
-    """
-    submit/pred/0001.png 저장용.
-    class index mask를 PNG로 저장.
-    """
-
-    save_path = Path(save_path)
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if torch.is_tensor(pred_mask):
-        pred_mask = pred_mask.detach().cpu().numpy()
-
-    pred_mask = pred_mask.astype(np.uint8)
-
-    img = Image.fromarray(pred_mask, mode="P")
-
-    flat_palette = palette.reshape(-1).tolist()
-    flat_palette += [0] * (768 - len(flat_palette))
-    img.putpalette(flat_palette)
-
-    img.save(save_path)

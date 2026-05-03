@@ -3,9 +3,8 @@
 import os
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 
-from src.data.build import build_val_dataset
+from src.data.build import build_val_loader
 from src.models.build import build_model
 from src.engine.evaluator import evaluate
 
@@ -28,27 +27,19 @@ def load_model_checkpoint(model, ckpt_path, device):
 
 
 def main(cfg):
-    set_seed(cfg.seed)
+    set_seed(cfg.runtime.seed)
 
     logger = get_logger()
-    device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        cfg.runtime.device if torch.cuda.is_available() else "cpu"
+    )
     logger.info(f"Using device: {device}")
 
     # -------------------------
-    # 1. Validation Dataset
+    # 1. Validation Dataloader
     # -------------------------
-    val_dataset = build_val_dataset(cfg)
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=cfg.training.batch_size,
-        shuffle=False,
-        num_workers=cfg.data.num_workers,
-        pin_memory=cfg.data.pin_memory,
-        drop_last=False,
-    )
-
-    logger.info(f"Validation dataset size: {len(val_dataset)}")
+    val_loader = build_val_loader(cfg)
+    logger.info(f"Validation dataset size: {len(val_loader.dataset)}")
 
     # -------------------------
     # 2. Model
@@ -74,12 +65,13 @@ def main(cfg):
     # 4. Loss / Metric
     # -------------------------
     criterion = nn.CrossEntropyLoss(
-        ignore_index=cfg.training.ignore_index
+        ignore_index=cfg.data.ignore_index
     )
 
     metric = MeanIoU(
-        num_classes=cfg.data.num_classes,
-        ignore_index=cfg.training.ignore_index,
+        num_classes=cfg.model.num_classes,
+        ignore_index=cfg.data.ignore_index,
+        device=device,
     )
 
     # -------------------------

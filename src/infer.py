@@ -16,9 +16,11 @@ from src.utils.seed import set_seed
 
 
 class SubmitImageDataset(Dataset):
-    def __init__(self, img_dir, input_size=512):
+    def __init__(self, img_dir, input_size=512, mean=None, std=None):
         self.img_dir = Path(img_dir)
         self.input_size = input_size
+        self.mean = mean or [0.485, 0.456, 0.406]
+        self.std = std or [0.229, 0.224, 0.225]
 
         self.image_paths = sorted(
             list(self.img_dir.glob("*.jpg"))
@@ -28,9 +30,6 @@ class SubmitImageDataset(Dataset):
 
         if len(self.image_paths) == 0:
             raise FileNotFoundError(f"No images found in {self.img_dir}")
-
-        self.mean = [0.485, 0.456, 0.406]
-        self.std = [0.229, 0.224, 0.225]
 
     def __len__(self):
         return len(self.image_paths)
@@ -77,17 +76,13 @@ def inference(model, data_loader, device, cfg):
 
     model.eval()
 
-    pred_dir = Path(cfg.paths.pred_dir)
+    pred_dir = Path(cfg.submit.pred_dir)
     pred_dir.mkdir(parents=True, exist_ok=True)
 
     for batch_idx, (images, image_names, original_sizes) in enumerate(data_loader):
         images = images.to(device, non_blocking=True)
 
         outputs = model(images)
-
-        # 혹시 torchvision segmentation model처럼 dict 출력인 경우 대응
-        if isinstance(outputs, dict):
-            outputs = outputs["out"]
 
         for i in range(outputs.shape[0]):
             name = image_names[i]
@@ -115,28 +110,27 @@ def inference(model, data_loader, device, cfg):
             save_path = pred_dir / f"{base_name}.png"
             save_prediction(pred, save_path)
 
-        # if (batch_idx + 1) % log_interval == 0:
-        #     logger.info(f"Inference [{batch_idx + 1}/{len(data_loader)}]")
-
     logger.info(f"Predictions saved to: {pred_dir}")
 
 
 def main(cfg):
-    set_seed(cfg.seed)
+    set_seed(cfg.runtime.seed)
 
     logger = get_logger()
 
-    device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
+    device = torch.device(cfg.runtime.device if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
 
-    img_dir = cfg.paths.submit_img_dir
-    pred_dir = cfg.paths.pred_dir
+    img_dir = cfg.submit.img_dir
+    pred_dir = cfg.submit.pred_dir
 
     os.makedirs(pred_dir, exist_ok=True)
 
     infer_dataset = SubmitImageDataset(
         img_dir=img_dir,
         input_size=cfg.data.input_size,
+        mean=cfg.data.mean,
+        std=cfg.data.std,
     )
 
     infer_loader = DataLoader(

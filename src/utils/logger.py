@@ -1,13 +1,4 @@
-import os
-import json
-from pathlib import Path
-
-
-def ensure_dir(path):
-    path = Path(path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
+import logging
 
 def cfg_to_dict(cfg):
     if isinstance(cfg, dict):
@@ -20,27 +11,6 @@ def cfg_to_dict(cfg):
         return {k: cfg_to_dict(v) for k, v in vars(cfg).items()}
 
     return cfg
-
-
-def save_json(obj, path):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-
-
-def print_config(cfg):
-    cfg_dict = cfg_to_dict(cfg)
-
-    print("=" * 80)
-    print("Config")
-    print("=" * 80)
-
-    for k, v in cfg_dict.items():
-        print(f"{k}: {v}")
-
-    print("=" * 80)
 
 
 def init_wandb(cfg):
@@ -56,7 +26,7 @@ def init_wandb(cfg):
         wandb_cfg = getattr(cfg, "wandb", None)
 
         run = wandb.init(
-            entity=getattr(wandb_cfg, "team", None),
+            entity=getattr(wandb_cfg, "entity", None),
             project=getattr(wandb_cfg, "project", "project01"),
             name=getattr(wandb_cfg, "run_name", None),
             config=cfg_to_dict(cfg),

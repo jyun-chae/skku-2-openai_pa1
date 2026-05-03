@@ -37,7 +37,7 @@ def train_one_epoch(
         optimizer.zero_grad(set_to_none=True)
 
         if use_amp and scaler is not None:
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast(device_type="cuda", enabled=use_amp):
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
@@ -112,46 +112,29 @@ def fit(
         train_loss = train_result["loss"]
         history["train_loss"].append(train_loss)
         
-        log_metrics_to_wandb(
-            epoch=epoch,
-            train_metrics=train_result,
-            optimizer=optimizer,
-        )
-        
         print(f"[Epoch {epoch}] train_loss: {train_loss:.4f}")
         
         do_eval = (
             val_loader is not None
             and ((epoch + 1) % eval_interval == 0 or epoch == epochs - 1)
         )
-
-        val_result = evaluate(
-            model=model,
-            val_loader=val_loader,
-            criterion=criterion,
-            metric=metric,
-            device=device,
-            cfg=cfg,
-            desc=f"Validation Epoch {epoch}",
-        )
         
         if do_eval:
+            val_result = evaluate(
+                model=model,
+                val_loader=val_loader,
+                criterion=criterion,
+                metric=metric,
+                device=device,
+                cfg=cfg,
+                desc=f"Validation Epoch {epoch}",
+            )
+            
             val_loss = val_result["loss"]
             val_miou = val_result["miou"]
 
             history["val_loss"].append(val_loss)
             history["val_miou"].append(val_miou)
-
-            log_metrics_to_wandb(
-                epoch=epoch,
-                train_metrics=train_result,
-                val_metrics={
-                    "loss": val_loss,
-                    "miou": val_miou,
-                    "per_class_iou": val_result["metric"].get("per_class_iou"),
-                },
-                optimizer=optimizer,
-            )
             
             print(
                 f"[Epoch {epoch}] "
@@ -174,6 +157,24 @@ def fit(
                 )
 
                 print(f"Best checkpoint saved: {best_path}")
+            
+            log_metrics_to_wandb(
+                epoch=epoch,
+                train_metrics=train_result,
+                val_metrics={
+                    "loss": val_loss,
+                    "miou": val_miou,
+                    "per_class_iou": val_result["metric"].get("per_class_iou"),
+                },
+                optimizer=optimizer,
+            )
+        
+        else:
+            log_metrics_to_wandb(
+                epoch=epoch,
+                train_metrics=train_result,
+                optimizer=optimizer,
+            )
 
         save_checkpoint(
             save_path=last_path,

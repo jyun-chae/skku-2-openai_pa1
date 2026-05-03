@@ -1,13 +1,12 @@
-from pathlib import Path
-
 from torch.utils.data import ConcatDataset, DataLoader
 
 from src.data.transforms import build_transform
 from src.data.voc import build_voc_dataset
 from src.data.coco_voc import build_coco_voc_dataset
 
+from types import SimpleNamespace
 
-def build_dataset(dataset_cfg: dict, cfg: dict, is_train: bool):
+def build_dataset(dataset_cfg: SimpleNamespace, cfg: SimpleNamespace, is_train: bool):
     """
     dataset_cfg 예시:
         {"name": "voc", "year": "2012", "split": "train"}
@@ -19,6 +18,15 @@ def build_dataset(dataset_cfg: dict, cfg: dict, is_train: bool):
     transform = build_transform(
         input_size=cfg.data.input_size,
         is_train=is_train,
+        ignore_index=cfg.data.ignore_index,
+        hflip_prob=cfg.transforms.hflip_prob if is_train else 0.0,
+        random_scale_prob=cfg.transforms.random_scale_prob if is_train else 0.0,
+        scale_range=tuple(cfg.transforms.scale_range),
+        random_crop_prob=cfg.transforms.random_crop_prob if is_train else 0.0,
+        copy_paste_prob=cfg.transforms.copy_paste_prob if is_train else 0.0,
+        stitching_prob=cfg.transforms.stitching_prob if is_train else 0.0,
+        paste_scale_range=tuple(cfg.transforms.paste_scale_range),
+        color_jitter_prob=cfg.transforms.color_jitter_prob if is_train else 0.0,
     )
 
     if name == "voc":
@@ -32,12 +40,12 @@ def build_dataset(dataset_cfg: dict, cfg: dict, is_train: bool):
 
     if name == "coco_voc":
         return build_coco_voc_dataset(
-            root=cfg.data.coco_root,
-            ann_file=cfg.data.coco_ann_file,
+            root=cfg.data.coco.image_dir,
+            ann_file=cfg.data.coco.ann_file,
             transform=transform,
-            ignore_index=cfg.training.ignore_index,
-            cache_dir=getattr(cfg.data, "coco_mask_cache_dir", None),
-            use_cache=getattr(cfg.data, "use_coco_mask_cache", True),
+            ignore_index=cfg.data.ignore_index,
+            cache_dir=cfg.data.coco.mask_cache_dir,
+            use_cache=cfg.data.coco.use_mask_cache,
         )
 
     raise ValueError(f"Unknown dataset name: {name}")

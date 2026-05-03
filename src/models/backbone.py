@@ -1,6 +1,3 @@
-# src/models/backbone.py
-
-import torch
 import torch.nn as nn
 import torchvision.models as models
 from torchvision.models import EfficientNet_B3_Weights
@@ -60,7 +57,7 @@ def build_backbone(cfg):
     name = cfg.model.backbone.lower()
     pretrained = getattr(cfg.model, "pretrained", True)
 
-    if name in ["efficientnet_b3", "efficientnet-b3", "efficientnet"]:
+    if name == "efficientnet_b3":
         return EfficientNetB3Backbone(pretrained=pretrained)
 
     raise ValueError(

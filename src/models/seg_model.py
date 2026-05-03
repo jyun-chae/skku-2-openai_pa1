@@ -131,13 +131,7 @@ class FPNLikeSegModel(nn.Module):
     def __init__(self, cfg):
         super().__init__()
 
-        self.cfg = cfg
-
-        self.num_classes = getattr(
-            cfg.data,
-            "num_classes",
-            getattr(cfg.model, "num_classes", 21),
-        )
+        self.num_classes = cfg.model.num_classes
 
         self.backbone = build_backbone(cfg)
         ch = self.backbone.out_channels

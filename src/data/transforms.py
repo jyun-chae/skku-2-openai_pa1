@@ -1,29 +1,3 @@
-# src/data/transforms.py
-
-"""
-Semantic segmentation transforms.
-
-- Resize / RandomHorizontalFlip / RandomScale / RandomCrop
-- Copy-Paste
-- Image Stitching / Mosaic-like augmentation
-
-핵심 변경점
----------
-Copy-Paste와 Image Stitching에 필요한 다른 image/mask를 transform 내부에서
-random하게 가져올 수 있도록 sample_getter를 지원한다.
-
-Dataset 쪽에서는 transform 호출 시 아래처럼 넘기면 된다.
-
-    image, mask = self.transform(
-        image,
-        mask,
-        sample_getter=self.get_random_raw_sample,
-    )
-
-sample_getter는 transform이 적용되지 않은 원본 PIL image/mask를 반환해야 한다.
-재귀 호출 방지를 위해 sample_getter 내부에서 self.transform을 호출하면 안 된다.
-"""
-
 from __future__ import annotations
 
 import random
