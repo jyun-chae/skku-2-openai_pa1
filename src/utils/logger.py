@@ -1,5 +1,3 @@
-import logging
-
 def cfg_to_dict(cfg):
     if isinstance(cfg, dict):
         return {k: cfg_to_dict(v) for k, v in cfg.items()}
@@ -11,6 +9,19 @@ def cfg_to_dict(cfg):
         return {k: cfg_to_dict(v) for k, v in vars(cfg).items()}
 
     return cfg
+
+
+def print_config(cfg):
+    cfg_dict = cfg_to_dict(cfg)
+
+    print("=" * 80)
+    print("Config")
+    print("=" * 80)
+
+    for k, v in cfg_dict.items():
+        print(f"{k}: {v}")
+
+    print("=" * 80)
 
 
 def init_wandb(cfg):
@@ -26,7 +37,7 @@ def init_wandb(cfg):
         wandb_cfg = getattr(cfg, "wandb", None)
 
         run = wandb.init(
-            entity=getattr(wandb_cfg, "entity", None),
+            entity=getattr(wandb_cfg, "team", None),
             project=getattr(wandb_cfg, "project", "project01"),
             name=getattr(wandb_cfg, "run_name", None),
             config=cfg_to_dict(cfg),
