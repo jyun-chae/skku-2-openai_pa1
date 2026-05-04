@@ -40,7 +40,6 @@ project01/
 │   ├── eval.py
 │   └── infer.py
 ├── checkpoints/
-│   └── model.pth
 ├── submit/
 │   ├── img.zip -> not uploaded
 ├── main.ipynb
@@ -50,7 +49,7 @@ project01/
 
 ## 2. Environment and Dependencies
 
-The project was designed to run on Google Colab with a T4 or L4 GPU.
+The project was designed to run on Google Colab with a T4 / L4 / A100 GPU.
 
 Install dependencies:
 
@@ -135,6 +134,7 @@ cfg = load_config("src/config/default.yaml")
 ```
 
 Important fields to check before running:
+check resume_path before running!
 
 ```yaml
 runtime:
@@ -173,7 +173,7 @@ checkpoints/last.pth
 checkpoints/best.pth
 ```
 
-For final submission, copy the selected checkpoint to:
+For backup, copy the selected checkpoint to:
 
 ```text
 checkpoints/model.pth
@@ -212,6 +212,8 @@ Notebook execution order:
 
 ## 7. Evaluation
 
+Evaluation is not neccesary part
+Skip eval when it is not needed
 Evaluate the best checkpoint on the validation split:
 
 ```bash
@@ -233,11 +235,14 @@ The metric is mIoU. Pixels with `ignore_index=255` are excluded from both the lo
 
 ## 8. Inference
 
-Place test images in:
+Place test images *.zip file in:
 
 ```text
 submit/img/
 ```
+
+Run unzip code before inference
+It's placed inside main.ipynb
 
 Run inference:
 
@@ -263,6 +268,13 @@ Each output PNG stores class indices in `[0, 20]`.
 ## 9. Reproduce Submitted Result
 
 To reproduce the submitted prediction files:
+
+0. default prediction moves depend on resome_path and best.pth(if resome is none)
+
+'''yaml
+checkpoint:
+  resume_path: ""
+'''
 
 1. Put the final checkpoint at:
 
@@ -297,61 +309,68 @@ submit/pred/
 
 ## 10. FLOPs Measurement
 
-The project score considers FLOPs at input size:
+For FLOP's measure we need ONNX
 
-```text
-1 x 3 x 480 x 640
-```
+Make ONNX depends on checkpoints/best.pth
 
-A grader-compatible way is to export the model to ONNX with input size `(1, 3, 480, 640)` and then count ONNX FLOPs.
-
-Example ONNX export:
-
-```python
+'''python
 from pathlib import Path
+import os
 import torch
+import onnx
+from google.colab import files
 
-from src.config.config import load_config
 from src.models.build import build_model
 
-cfg = load_config("src/config/default.yaml")
+ckpt_path = getattr(cfg.checkpoint, "resume_path", "")
+if ckpt_path is None or ckpt_path == "":
+    ckpt_path = os.path.join(cfg.checkpoint.save_dir, "best.pth")
 
-model = build_model(cfg)
-ckpt = torch.load("checkpoints/model.pth", map_location="cpu")
+ckpt_path = Path(ckpt_path)
+if not ckpt_path.exists():
+    raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-if "model" in ckpt:
-    model.load_state_dict(ckpt["model"])
+model = build_model(cfg).to(device)
+checkpoint = torch.load(ckpt_path, map_location=device)
+
+if "model" in checkpoint:
+    model.load_state_dict(checkpoint["model"])
+elif "model_state_dict" in checkpoint:
+    model.load_state_dict(checkpoint["model_state_dict"])
 else:
-    model.load_state_dict(ckpt)
+    model.load_state_dict(checkpoint)
 
 model.eval()
 
-onnx_path = "checkpoints/model.onnx"
-Path(onnx_path).parent.mkdir(parents=True, exist_ok=True)
+onnx_path = Path("/content/project01/submit/model.onnx")
+onnx_path.parent.mkdir(parents=True, exist_ok=True)
 
-dummy = torch.randn(1, 3, 480, 640)
+input_size = int(cfg.data.input_size)
+dummy = torch.randn(1, 3, input_size, input_size, device=device)
 
-torch.onnx.export(
-    model,
-    dummy,
-    onnx_path,
-    opset_version=16,
-    input_names=["input"],
-    output_names=["output"],
-)
-```
+with torch.no_grad():
+    torch.onnx.export(
+        model,
+        dummy,
+        str(onnx_path),
+        input_names=["input"],
+        output_names=["logits"],
+        opset_version=17,
+        do_constant_folding=True,
+        dynamic_axes={
+            "input": {0: "batch", 2: "height", 3: "width"},
+            "logits": {0: "batch", 2: "height", 3: "width"},
+        },
+    )
 
-If the standalone grader-compatible FLOPs counter is included as `tools/grader_flops.py`, run:
+onnx_model = onnx.load(str(onnx_path))
+onnx.checker.check_model(onnx_model)
 
-```bash
-python tools/grader_flops.py checkpoints/model.onnx --verbose
-```
+print("ONNX saved:", onnx_path)
+print("ONNX size MB:", onnx_path.stat().st_size / 1024 / 1024)
 
-If the FLOPs script is placed in the project root, run:
-
-```bash
-python grader_flops.py checkpoints/model.onnx --verbose
-```
+files.download(str(onnx_path))
+'''
 
 ## 11. WandB
 
@@ -374,33 +393,8 @@ wandb login
 
 WandB settings are controlled by `src/config/default.yaml`.
 
-## 12. Submission Checklist
 
-Final zip structure:
-
-```text
-2025xxxxxx_project01.zip
-├── src/
-├── checkpoints/
-│   └── model.pth
-├── submit/
-│   ├── img/
-│   └── pred/
-├── 2025xxxxx_project01_report.pdf
-├── pyproject.toml
-└── README.md
-```
-
-Before zipping, check:
-
-```bash
-ls checkpoints/model.pth
-ls submit/pred
-```
-
-`submit/img/` should be included as an empty folder unless otherwise instructed.
-
-## 13. Notes
+## 12. Notes
 
 - This project uses PyTorch and TorchVision.
 - The backbone uses TorchVision ImageNet-1K classification pretrained EfficientNet-B3 weights.
