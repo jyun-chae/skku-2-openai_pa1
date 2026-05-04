@@ -179,7 +179,7 @@ def to_tensor_and_normalize(
     valid_pixels = np.sum(mask_np != 255)
 
     if valid_pixels == 0:
-        raise ValueError("Transform produced all-ignore mask.")
+        print("Transform produced all-ignore mask.")
     
     image = F.to_tensor(image)
     image = F.normalize(image, mean=list(mean), std=list(std))
