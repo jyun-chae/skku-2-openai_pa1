@@ -1,5 +1,12 @@
 # src/models/seg_model.py
 
+"""
+Semantic segmentation models.
+
+This module implements FPN-like segmentation architecture using EfficientNet-B3 backbone
+with depthwise separable convolutions for efficient feature fusion and segmentation head.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +15,8 @@ from .backbone import build_backbone
 
 
 class CBR(nn.Module):
+    """Conv-BatchNorm-ReLU block."""
+
     def __init__(
         self,
         in_channels,
@@ -37,10 +46,10 @@ class CBR(nn.Module):
 
 class DWSeparableCBR(nn.Module):
     """
-    Depthwise separable conv:
-        depthwise 3x3 conv + pointwise 1x1 conv
+    Depthwise separable Conv-BatchNorm-ReLU block.
 
-    일반 3x3 Conv보다 FLOPs/Params가 훨씬 적음.
+    Uses depthwise 3x3 conv followed by pointwise 1x1 conv.
+    Significantly reduces FLOPs/Params compared to regular 3x3 conv.
     """
 
     def __init__(
@@ -54,7 +63,7 @@ class DWSeparableCBR(nn.Module):
         super().__init__()
 
         self.block = nn.Sequential(
-            # depthwise spatial conv
+            # Depthwise spatial convolution
             nn.Conv2d(
                 in_channels,
                 in_channels,
@@ -67,7 +76,7 @@ class DWSeparableCBR(nn.Module):
             nn.BatchNorm2d(in_channels),
             nn.ReLU(inplace=True),
 
-            # pointwise channel mixing / compression
+            # Pointwise channel mixing/compression
             nn.Conv2d(
                 in_channels,
                 out_channels,
@@ -84,11 +93,11 @@ class DWSeparableCBR(nn.Module):
 
 class HighLevelCompress(nn.Module):
     """
-    c4/c5처럼 channel이 큰 high-level feature를 가볍게 fpn_channels로 압축.
+    Compression module for high-level features with many channels.
 
-    특히 EfficientNet-B3 c5는 1536 channels라서,
-    단순 1x1 Conv만 쓰는 것보다 depthwise spatial conv를 먼저 거친 뒤
-    pointwise로 압축하는 방식으로 context를 조금 반영하면서 압축함.
+    Compresses c4/c5 features (with many channels) to FPN channels efficiently.
+    Uses depthwise separable conv to preserve spatial context before compression.
+    Particularly useful for EfficientNet-B3 c5 with 1536 channels.
     """
 
     def __init__(
@@ -113,19 +122,19 @@ class HighLevelCompress(nn.Module):
 
 class FPNLikeSegModel(nn.Module):
     """
-    EfficientNet-B3 backbone + c2~c5 FPN-like neck.
+    FPN-like semantic segmentation model with EfficientNet-B3 backbone.
 
-    Used features:
-        c2: stride /4,  channels 32
-        c3: stride /8,  channels 48
-        c4: stride /16, channels 136
-        c5: stride /32, channels 1536
+    Features multi-scale feature fusion from c2-c5 levels:
+        c2: stride /4,  32 channels
+        c3: stride /8,  48 channels
+        c4: stride /16, 136 channels
+        c5: stride /32, 1536 channels
 
-    Changes:
-        - c4/c5 lateral compression uses depthwise separable conv
-        - smooth/head uses light dilation for segmentation context
+    Architecture changes for efficiency:
+        - c4/c5 lateral connections use depthwise separable compression
+        - Smooth/head layers use dilation for better segmentation context
 
-    Output is resized back to input image size.
+    Output is bilinearly upsampled back to input image size.
     """
 
     def __init__(self, cfg):
@@ -139,26 +148,26 @@ class FPNLikeSegModel(nn.Module):
         fpn_channels = getattr(cfg.model, "fpn_channels", 64)
         dropout = getattr(cfg.model, "dropout", 0.1)
 
-        # Low/mid-level features: channel이 작아서 일반 1x1 projection 유지
+        # Low/mid-level features: use simple 1x1 projection (channels are small)
         self.lateral_c2 = nn.Conv2d(ch["c2"], fpn_channels, kernel_size=1)
         self.lateral_c3 = nn.Conv2d(ch["c3"], fpn_channels, kernel_size=1)
 
-        # High-level features: c4/c5는 depthwise separable compression 사용
-        # c4는 /16이라 dilation=1 정도가 안정적
+        # High-level features: use depthwise separable compression
+        # c4 at /16 stride, dilation=1 is stable
         self.lateral_c4 = HighLevelCompress(
             in_channels=ch["c4"],
             out_channels=fpn_channels,
             dilation=1,
         )
 
-        # c5는 /32라 공간 크기가 작으므로 dilation=2로 context를 조금 넓힘
+        # c5 at /32 stride, small spatial size so use dilation=2 for more context
         self.lateral_c5 = HighLevelCompress(
             in_channels=ch["c5"],
             out_channels=fpn_channels,
             dilation=2,
         )
 
-        # p2는 /4 해상도라 너무 무겁지 않게 depthwise separable 사용
+        # p2 at /4 resolution, use depthwise separable to keep it lightweight
         self.smooth_c2 = DWSeparableCBR(
             fpn_channels,
             fpn_channels,
@@ -167,7 +176,7 @@ class FPNLikeSegModel(nn.Module):
             dilation=1,
         )
 
-        # p3/p4는 top-down fusion 중간 정리에 사용
+        # p3/p4 smoothing for top-down fusion refinement
         self.smooth_c3 = DWSeparableCBR(
             fpn_channels,
             fpn_channels,
@@ -184,7 +193,7 @@ class FPNLikeSegModel(nn.Module):
             dilation=1,
         )
 
-        # segmentation head에는 dilation=2를 넣어 receptive field를 조금 확장
+        # Segmentation head with dilation=2 to expand receptive field
         self.head = nn.Sequential(
             DWSeparableCBR(
                 fpn_channels,
@@ -211,11 +220,12 @@ class FPNLikeSegModel(nn.Module):
 
         feats = self.backbone(x)
 
-        c2 = feats["c2"]    # /4
-        c3 = feats["c3"]    # /8
-        c4 = feats["c4"]    # /16
-        c5 = feats["c5"]    # /32
+        c2 = feats["c2"]    # stride /4
+        c3 = feats["c3"]    # stride /8
+        c4 = feats["c4"]    # stride /16
+        c5 = feats["c5"]    # stride /32
 
+        # Top-down feature fusion (FPN-style)
         p5 = self.lateral_c5(c5)
         p4 = self._upsample_add(p5, self.lateral_c4(c4))
         p4 = self.smooth_c4(p4)
@@ -226,8 +236,10 @@ class FPNLikeSegModel(nn.Module):
         p2 = self._upsample_add(p3, self.lateral_c2(c2))
         p2 = self.smooth_c2(p2)
 
+        # Segmentation head
         logits = self.head(p2)
 
+        # Upsample to original input size
         logits = F.interpolate(
             logits,
             size=input_size,

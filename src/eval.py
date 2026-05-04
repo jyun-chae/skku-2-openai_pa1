@@ -1,5 +1,12 @@
 # src/eval.py
 
+"""
+Evaluation script for semantic segmentation model.
+
+This script loads a trained model checkpoint and evaluates it on the validation dataset,
+computing loss and mean IoU metrics.
+"""
+
 import os
 import torch
 import torch.nn as nn

@@ -1,20 +1,18 @@
-# src/data/visualize_aug.py
-
 """
-실제 src/data/transforms.py의 SegmentationTransform이 적용된 결과를 시각화하는 스크립트.
+Script to visualize the results of applying SegmentationTransform from src/data/transforms.py.
 
-중요:
-  - 이 파일에서는 augmentation을 새로 정의하지 않는다.
-  - 실제 학습에 쓰는 build_transform() / SegmentationTransform을 호출한다.
-  - 시각화는 src/utils/visualization.py의 공통 함수를 사용한다.
+Important notes:
+  - This file does not define new augmentations.
+  - It uses the actual build_transform() / SegmentationTransform used in training.
+  - Visualization uses common functions from src/utils/visualization.py.
 
-실행 예시:
+Example usage:
   python -m src.data.visualize_aug \
     --sample-root src/data/aug_samples \
     --out-dir src/data/aug_vis_results \
     --num-repeats 5
 
-샘플 폴더 구조:
+Sample folder structure:
   src/data/aug_samples/images/0001.jpg
   src/data/aug_samples/masks/0001.png
 """
@@ -41,6 +39,7 @@ def ensure_dir(path: Path) -> None:
 
 
 def list_image_files(image_dir: Path) -> list[Path]:
+    """List all image files in the given directory."""
     return sorted(
         p for p in image_dir.iterdir()
         if p.is_file() and p.suffix.lower() in IMG_EXTS
@@ -57,9 +56,9 @@ def find_mask(mask_dir: Path, stem: str) -> Path:
 
 
 def rgb_mask_to_index(mask_rgb: np.ndarray, ignore_index: int = 255) -> np.ndarray:
-    """
-    VOC RGB palette mask를 class-index mask로 변환.
-    이건 augmentation이 아니라 입력 mask loading 보조 함수.
+    """Convert VOC RGB palette mask to class-index mask.
+
+    This is a helper function for loading input masks, not an augmentation.
     """
     h, w, _ = mask_rgb.shape
     out = np.full((h, w), ignore_index, dtype=np.uint8)
@@ -76,9 +75,9 @@ def load_pair(
     mask_path: Path,
     ignore_index: int = 255,
 ) -> tuple[Image.Image, Image.Image]:
-    """
-    image/mask pair를 PIL로 로드.
-    mask는 class-index L mode로 변환한다.
+    """Load image/mask pair as PIL images.
+
+    Converts mask to class-index L mode.
     """
     image = Image.open(image_path).convert("RGB")
     mask = Image.open(mask_path)
@@ -108,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-repeats", type=int, default=5)
 
-    # transform.py의 build_transform 인자들
+    # Arguments matching build_transform in transforms.py
     parser.add_argument("--input-size", type=int, default=512)
     parser.add_argument("--ignore-index", type=int, default=255)
 
@@ -129,6 +128,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Main function to run the augmentation visualization."""
     args = parse_args()
 
     random.seed(args.seed)
@@ -181,9 +181,9 @@ def main() -> None:
     )
 
     def sample_getter() -> tuple[Image.Image, Image.Image]:
-        """
-        transform.py의 Copy-Paste / Stitching이 사용할 extra sample 공급 함수.
-        여기서 augmentation을 하지 않고, 원본 image/mask만 반환한다.
+        """Sample getter function for Copy-Paste/Stitching augmentations.
+
+        Returns original image/mask without any augmentation.
         """
         _, src_img, src_mask = random.choice(pairs)
         return src_img.copy(), src_mask.copy()
@@ -214,10 +214,10 @@ def main() -> None:
 
     print(f"[OK] Saved augmentation visualization panels to: {out_dir.resolve()}")
     print("Check:")
-    print("  1) image와 mask가 같은 위치/방향으로 변했는지")
-    print("  2) mask class 색이 깨지거나 섞이지 않았는지")
-    print("  3) copy-paste/stitching이 transform.py 설정대로 적용되는지")
-    print("  4) ignore_index=255가 흰색으로 유지되는지")
+    print("  1) Whether image and mask transform together consistently")
+    print("  2) Whether mask class colors remain intact")
+    print("  3) Whether copy-paste/stitching apply according to transforms.py settings")
+    print("  4) Whether ignore_index=255 remains white")
 
 
 if __name__ == "__main__":

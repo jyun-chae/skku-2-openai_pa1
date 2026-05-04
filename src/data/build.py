@@ -6,15 +6,29 @@ from src.data.coco_voc import build_coco_voc_dataset
 
 from types import SimpleNamespace
 
+"""Dataset builder module.
+
+This module constructs training and validation datasets and dataloaders
+according to the configuration object. It supports VOC and COCO-style
+datasets and applies the appropriate transforms for training and
+validation modes.
+"""
+
+
 def build_dataset(dataset_cfg: SimpleNamespace, cfg: SimpleNamespace, is_train: bool):
-    """
-    dataset_cfg 예시:
-        {"name": "voc", "year": "2012", "split": "train"}
-        {"name": "coco_voc", "split": "train"}
+    """Create a dataset instance from a dataset configuration.
+
+    dataset_cfg: The configuration for the specific dataset to build.
+        {"name": "voc", "year": "2012", "split": "train"} or
+        {"name": "coco_voc", "split": "train"} etc.
+    is_train: Whether the dataset is for training (True) or validation (False).
+
+    Returns a dataset object ready for use with a DataLoader.
     """
 
     name = dataset_cfg.name.lower()
 
+    # Build the transformation pipeline for the dataset depend on cfg
     transform = build_transform(
         input_size=cfg.data.input_size,
         is_train=is_train,
@@ -39,6 +53,7 @@ def build_dataset(dataset_cfg: SimpleNamespace, cfg: SimpleNamespace, is_train: 
         )
 
     if name == "coco_voc":
+        # Build a COCO-style dataset used in VOC-style evaluation.
         return build_coco_voc_dataset(
             root=cfg.data.coco.image_dir,
             ann_file=cfg.data.coco.ann_file,
@@ -52,6 +67,10 @@ def build_dataset(dataset_cfg: SimpleNamespace, cfg: SimpleNamespace, is_train: 
 
 
 def build_train_dataset(cfg: dict):
+    """Build the training dataset(s) defined in the config.
+
+    Supports multiple training datasets by concatenating them.
+    """
     datasets = []
 
     for dataset_cfg in cfg.data.train_datasets:

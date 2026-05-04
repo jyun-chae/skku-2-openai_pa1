@@ -1,3 +1,10 @@
+"""
+Pascal VOC semantic segmentation dataset implementation.
+
+This module provides a wrapper around torchvision.datasets.VOCSegmentation
+to apply segmentation transforms and return tensors in the expected format.
+"""
+
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -10,11 +17,10 @@ class VOCSegDataset(Dataset):
     """
     Pascal VOC semantic segmentation dataset wrapper.
 
-    torchvision.datasets.VOCSegmentation은 image, target을 PIL로 반환한다.
-    여기서는 segmentation transform을 적용해서
-    image: FloatTensor [3, H, W]
-    mask : LongTensor  [H, W]
-    형태로 반환한다.
+    torchvision.datasets.VOCSegmentation returns image and target as PIL images.
+    This wrapper applies segmentation transforms to return:
+    - image: FloatTensor [3, H, W]
+    - mask: LongTensor [H, W]
     """
 
     def __init__(
@@ -39,31 +45,35 @@ class VOCSegDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.dataset)
-    
+
     def _load_raw_sample(self, index: int):
         image, mask = self.dataset[index]
 
         image = image.convert("RGB")
-        # VOC mask는 palette PNG일 수 있으므로 convert("L") 하지 않는 게 안전함.
-        # transform.py 쪽에서 np.array(mask)로 class index를 읽으면 됨.
+        # VOC mask may be palette PNG, so avoid convert("L") for safety.
+        # transforms.py will handle class index conversion with np.array(mask).
 
         return image, mask
-    
+
     def get_random_raw_sample(self):
+        """Get a random raw sample for augmentations like copy-paste."""
         rand_index = random.randint(0, len(self.dataset) - 1)
         return self._load_raw_sample(rand_index)
 
     def __getitem__(self, index: int):
+        """Get transformed sample at given index."""
         image, mask = self._load_raw_sample(index)
 
         if self.transform is not None:
             if getattr(self.transform, "is_train", False):
+                # For training transforms that need sample_getter (e.g., copy-paste)
                 image, mask = self.transform(
                     image,
                     mask,
                     sample_getter=self.get_random_raw_sample,
                 )
             else:
+                # For validation/test transforms
                 image, mask = self.transform(image, mask)
         else:
             raise ValueError(

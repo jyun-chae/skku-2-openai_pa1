@@ -12,6 +12,14 @@ from torchvision.transforms.functional import InterpolationMode
 ImageMask = Tuple[Image.Image, Image.Image]
 SampleGetter = Callable[[], ImageMask]
 
+"""Data transformation module for semantic segmentation.
+
+This module provides various image and mask transformations for training
+and validation of semantic segmentation models. It includes basic geometric
+transforms, data augmentation techniques like copy-paste and image stitching,
+and utilities for converting to PyTorch tensors.
+"""
+
 
 # ---------------------------------------------------------------------
 # Utility
@@ -35,9 +43,10 @@ def _safe_get_extra_samples(
     num_samples: int,
     max_trials: int = 20,
 ) -> List[ImageMask]:
-    """
-    extra_samples가 직접 들어오면 그것을 우선 사용하고,
-    없으면 sample_getter를 통해 transform 내부에서 random sample을 뽑는다.
+    """Safely gather additional samples for augmentation.
+
+    Uses provided extra_samples first, then falls back to sample_getter
+    to obtain random samples from the dataset. Handles exceptions gracefully.
     """
     samples: List[ImageMask] = []
 
@@ -76,11 +85,15 @@ def _safe_get_extra_samples(
 # ---------------------------------------------------------------------
 
 def resize_pair(image: Image.Image, mask: Image.Image, size: int | Tuple[int, int]) -> ImageMask:
-    """image/mask resize. mask는 class index 보존을 위해 반드시 NEAREST."""
+    """Resize both image and mask to the specified size.
+
+    Uses bilinear interpolation for images and nearest neighbor for masks
+    to preserve class indices.
+    """
     if isinstance(size, int):
         out_size = [size, size]
     else:
-        # torchvision resize는 [height, width]
+        # torchvision resize expects [height, width]
         out_size = [size[0], size[1]]
 
     image = F.resize(image, out_size, interpolation=InterpolationMode.BILINEAR)
@@ -89,7 +102,7 @@ def resize_pair(image: Image.Image, mask: Image.Image, size: int | Tuple[int, in
 
 
 def random_horizontal_flip(image: Image.Image, mask: Image.Image, prob: float = 0.5) -> ImageMask:
-    """image/mask를 같은 확률로 horizontal flip."""
+    """Apply horizontal flip to both image and mask with given probability."""
     if random.random() < prob:
         image = F.hflip(image)
         mask = F.hflip(mask)
@@ -101,7 +114,7 @@ def random_scale(
     mask: Image.Image,
     scale_range: Tuple[float, float] = (0.5, 2.0),
 ) -> ImageMask:
-    """aspect ratio를 유지하면서 image/mask를 같은 비율로 random scale."""
+    """Randomly scale image and mask while preserving aspect ratio."""
     scale = random.uniform(scale_range[0], scale_range[1])
     w, h = image.size
     new_w = max(1, int(round(w * scale)))
@@ -118,7 +131,11 @@ def random_crop_or_pad(
     crop_size: int,
     ignore_index: int = 255,
 ) -> ImageMask:
-    """작으면 pad, 크면 random crop해서 crop_size x crop_size 보장."""
+    """Crop or pad image and mask to ensure crop_size x crop_size output.
+
+    If smaller than crop_size, pads with zeros (image) or ignore_index (mask).
+    If larger, performs random crop.
+    """
     w, h = image.size
 
     pad_w = max(crop_size - w, 0)
@@ -144,7 +161,7 @@ def color_jitter_image_only(
     saturation: float = 0.2,
     hue: float = 0.05,
 ) -> Image.Image:
-    """mask에는 절대 적용하지 않는 image-only augmentation."""
+    """Apply color jitter only to the image (not mask) with given probability."""
     if random.random() >= prob:
         return image
 
@@ -174,7 +191,7 @@ def to_tensor_and_normalize(
     mean: Sequence[float],
     std: Sequence[float],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """PIL image/mask를 학습용 tensor로 변환."""
+    """Convert PIL images to normalized PyTorch tensors for training."""
     mask_np = np.array(mask, dtype=np.int64)
     valid_pixels = np.sum(mask_np != 255)
 
@@ -192,11 +209,13 @@ def to_tensor_and_normalize(
 # ---------------------------------------------------------------------
 
 def _valid_foreground_classes(mask_np: np.ndarray, ignore_index: int = 255) -> List[int]:
+    """Extract valid foreground class IDs from mask array."""
     classes = np.unique(mask_np).tolist()
     return [int(c) for c in classes if int(c) not in (0, ignore_index)]
 
 
 def _binary_bbox(binary: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+    """Compute bounding box for binary mask. Returns (x1, y1, x2, y2) or None."""
     ys, xs = np.where(binary)
     if len(xs) == 0 or len(ys) == 0:
         return None
@@ -212,11 +231,11 @@ def copy_paste(
     paste_scale_range: Tuple[float, float] = (0.7, 1.3),
     max_area_ratio: float = 0.6,
 ) -> ImageMask:
-    """
-    semantic mask 기반 simple Copy-Paste.
+    """Perform semantic copy-paste augmentation.
 
-    source_mask에서 foreground class 하나를 골라 bbox crop 후 target에 붙인다.
-    instance mask가 없는 VOC semantic mask에서도 동작하도록 class 영역 기반으로 구현했다.
+    Selects a foreground class from source_mask, crops its bounding box,
+    scales it randomly, and pastes it onto the target image/mask.
+    Designed to work with semantic masks without instance information.
     """
     image = _to_rgb(image)
     source_image = _to_rgb(source_image)
@@ -288,11 +307,10 @@ def image_stitching(
     output_size: int,
     mode: str = "random",
 ) -> ImageMask:
-    """
-    2-image stitching 또는 4-image mosaic.
+    """Perform image stitching or mosaic augmentation.
 
-    source_samples 1개 이상: horizontal/vertical stitching 가능
-    source_samples 3개 이상: mosaic4 가능
+    Supports horizontal/vertical stitching (2 images) or 4-image mosaic.
+    Requires at least 1 source sample for stitching, 3 for mosaic.
     """
     if len(source_samples) == 0:
         return image, mask
@@ -368,11 +386,11 @@ def image_stitching(
 # ---------------------------------------------------------------------
 
 class SegmentationTransform:
-    """
-    Semantic segmentation용 transform.
+    """Transform class for semantic segmentation training and validation.
 
-    Copy-Paste / Stitching은 다른 image/mask가 필요하다.
-    이제 transform 호출 시 sample_getter를 넘기면 transform 내부에서 random하게 가져온다.
+    Handles geometric transforms, data augmentation (copy-paste, stitching),
+    and conversion to PyTorch tensors. For augmentations requiring additional
+    samples, uses sample_getter to obtain random samples from the dataset.
     """
 
     def __init__(
@@ -412,7 +430,7 @@ class SegmentationTransform:
         extra_samples: Optional[Sequence[ImageMask]] = None,
         sample_getter: Optional[SampleGetter] = None,
     ) -> ImageMask:
-        """Copy-Paste / Stitching 중 random하게 최대 하나만 적용."""
+        """Apply at most one mix augmentation (copy-paste or stitching) randomly."""
         candidates = []
         if self.copy_paste_prob > 0 and random.random() < self.copy_paste_prob:
             candidates.append("copy_paste")
@@ -464,7 +482,7 @@ class SegmentationTransform:
 
         if self.is_train:
             # 1. Mix augmentation.
-            #    extra_samples가 있으면 그것을 쓰고, 없으면 sample_getter로 random source를 뽑는다.
+            #    Uses extra_samples if provided, otherwise sample_getter for random sources.
             image, mask = self._apply_random_mix_aug(
                 image=image,
                 mask=mask,
@@ -476,7 +494,7 @@ class SegmentationTransform:
             if random.random() < self.random_scale_prob:
                 image, mask = random_scale(image, mask, self.scale_range)
 
-            # 3. RandomCrop. 최종 input_size 보장.
+            # 3. RandomCrop. Ensures final input_size.
             if random.random() < self.random_crop_prob:
                 image, mask = random_crop_or_pad(
                     image,
@@ -487,14 +505,14 @@ class SegmentationTransform:
             else:
                 image, mask = resize_pair(image, mask, self.input_size)
 
-            # 4. 기존 HorizontalFlip
+            # 4. HorizontalFlip
             image, mask = random_horizontal_flip(image, mask, self.hflip_prob)
 
-            # 5. image-only color jitter. 기본값 0이라 기존 학습에는 영향 없음.
+            # 5. Image-only color jitter. Default 0 so no impact on existing training.
             image = color_jitter_image_only(image, prob=self.color_jitter_prob)
 
         else:
-            # val/test는 deterministic하게 resize만 수행
+            # For val/test, only deterministic resize
             image, mask = resize_pair(image, mask, self.input_size)
 
         return to_tensor_and_normalize(image, mask, mean=self.mean, std=self.std)
@@ -517,6 +535,7 @@ def build_transform(
     color_jitter_prob: float = 0.3,
     ignore_index: int = 255,
 ) -> SegmentationTransform:
+    """Factory function to build a SegmentationTransform instance."""
     return SegmentationTransform(
         input_size=input_size,
         is_train=is_train,

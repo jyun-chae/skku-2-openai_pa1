@@ -1,3 +1,10 @@
+"""
+Logging utilities for training and configuration.
+
+This module provides functions for configuration printing, Weights & Biases integration,
+and standard Python logging setup.
+"""
+
 def cfg_to_dict(cfg):
     if isinstance(cfg, dict):
         return {k: cfg_to_dict(v) for k, v in cfg.items()}
@@ -12,6 +19,7 @@ def cfg_to_dict(cfg):
 
 
 def print_config(cfg):
+    """Print configuration in formatted style."""
     cfg_dict = cfg_to_dict(cfg)
 
     print("=" * 80)
@@ -86,11 +94,15 @@ def log_metrics_to_wandb(
 
     except Exception as e:
         print(f"[WandB] log failed: {e}")
-        
+
 import logging
 
 
 def get_logger(name: str = "project01"):
+    """Get configured logger instance.
+
+    Returns Configured logger with stream handler.
+    """
     logger = logging.getLogger(name)
 
     if logger.handlers:

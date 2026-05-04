@@ -8,6 +8,14 @@ from torch.utils.data import Dataset
 from torchvision.datasets import CocoDetection
 
 
+"""COCO-VOC dataset builder module.
+
+This module converts COCO detection annotations into VOC-style
+semantic segmentation masks. It supports mask caching so that
+mask images are generated once and then reused across epochs.
+"""
+
+
 VOC_CLASSES = [
     "background",
     "aeroplane",
@@ -58,14 +66,12 @@ COCO_TO_VOC_NAME = {
 
 
 class COCOVOCSegDataset(Dataset):
-    """
-    COCO detection annotation을 VOC-style segmentation mask로 변환한다.
+    """Dataset wrapper that converts COCO annotations to VOC masks.
 
-    핵심:
-        - 처음 접근한 image의 mask는 annToMask로 생성 후 PNG cache 저장
-        - 다음 epoch부터는 cached PNG를 바로 읽음
+    The dataset filters out COCO images that do not contain any valid VOC
+    categories or that only contain crowd/invalid annotations. For each
+    valid image, it generates a segmentation mask where:
 
-    mask label:
         0    = background
         1~20 = VOC class
         255  = ignore
@@ -117,6 +123,7 @@ class COCOVOCSegDataset(Dataset):
         )
 
     def _build_category_mapping(self) -> dict[int, int]:
+        """Build mapping from COCO category IDs to VOC class indices."""
         mapping = {}
 
         for cat_id, cat in self.coco.cats.items():
@@ -132,6 +139,7 @@ class COCOVOCSegDataset(Dataset):
         return mapping
 
     def _filter_valid_indices(self) -> list[int]:
+        """Filter dataset indices to only those with valid VOC objects."""
         valid_indices = []
 
         for idx in range(len(self.dataset)):
@@ -163,6 +171,7 @@ class COCOVOCSegDataset(Dataset):
         anns: list[dict],
         image_id: int,
     ) -> Image.Image:
+        """Load a cached mask if available, otherwise build and cache it."""
         if self.use_cache:
             cache_path = self._get_cache_path(image_id)
 
@@ -172,16 +181,17 @@ class COCOVOCSegDataset(Dataset):
         mask = self._build_mask(image, anns)
 
         if not self._has_foreground(mask):
-            # 이론상 _filter_valid_indices를 고치면 거의 안 걸려야 정상
-            # 디버깅 단계에서는 raise로 바로 잡는 게 좋음
+            # If the filtering logic is correct, this should rarely happen.
+            # Raising an exception makes debugging easier when it does occur.
             raise ValueError(f"COCO image_id={image_id} produced no foreground VOC pixels.")
 
         if self.use_cache:
             mask.save(cache_path)
 
         return mask
-    
+
     def _load_raw_sample(self, index: int):
+        """Load the raw image and corresponding mask for a valid index."""
         real_index = self.valid_indices[index]
         image_id = self.dataset.ids[real_index]
 
@@ -191,11 +201,12 @@ class COCOVOCSegDataset(Dataset):
         mask = self._load_or_build_mask(image, anns, image_id)
 
         return image, mask
-    
+
     def _has_foreground(self, mask: Image.Image) -> bool:
+        """Return True if the mask contains any VOC foreground pixels."""
         mask_np = np.array(mask, dtype=np.uint8)
         return np.any((mask_np >= 1) & (mask_np <= 20))
-    
+
     def get_random_raw_sample(self):
         rand_index = random.randint(0, len(self) - 1)
         return self._load_raw_sample(rand_index)
@@ -251,6 +262,7 @@ def build_coco_voc_dataset(
     cache_dir: str | Path | None = None,
     use_cache: bool = True,
 ) -> COCOVOCSegDataset:
+    """Factory helper that builds a COCOVOCSegDataset instance."""
     return COCOVOCSegDataset(
         root=root,
         ann_file=ann_file,

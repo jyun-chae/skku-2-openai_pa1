@@ -1,3 +1,11 @@
+"""
+Training entrypoint for semantic segmentation.
+
+This script sets up training for a segmentation model, including data loaders,
+model creation, loss and metric definitions, optimizer and scheduler configuration,
+and optional checkpoint resume.
+"""
+
 import torch
 import torch.nn as nn
 
@@ -13,7 +21,7 @@ from src.utils.metric import MeanIoU
 
 def main(cfg):
     # -------------------------
-    # 1. 기본 설정
+    # 1. Runtime setup
     # -------------------------
     set_seed(cfg.runtime.seed)
 
@@ -88,6 +96,7 @@ def main(cfg):
     # -------------------------
     # 6. Scheduler
     # -------------------------
+    # Optionally configure a learning rate scheduler.
     scheduler = None
 
     scheduler_name = getattr(cfg.training, "scheduler", "none").lower()
@@ -105,6 +114,7 @@ def main(cfg):
     # -------------------------
     # 7. Resume
     # -------------------------
+    # Initialize resume state in case a checkpoint is loaded.
     start_epoch = 0
     best_val_miou = 0.0
     history = None

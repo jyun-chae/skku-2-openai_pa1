@@ -1,3 +1,10 @@
+"""
+Visualization utilities for semantic segmentation.
+
+This module provides functions for displaying images, masks, predictions,
+and creating comparison panels for data augmentation visualization.
+"""
+
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +86,7 @@ def tensor_to_image(image: torch.Tensor, mean=None, std=None):
 
 
 def mask_to_color(mask, palette=VOC_PALETTE, ignore_index: int = 255):
+    """Convert class index mask to RGB color image."""
     if torch.is_tensor(mask):
         mask = mask.detach().cpu().numpy()
 
@@ -132,11 +140,10 @@ def show_augmented_samples(
     std=(0.229, 0.224, 0.225),
     ignore_index: int = 255,
 ):
-    """
-    data augmentation 결과 확인용.
-    train_dataset에 transform이 걸려 있으면 호출할 때마다 다른 augmentation이 보임.
-    """
+    """Display multiple samples from dataset to check augmentations.
 
+    If dataset has transforms applied, each call shows different augmentations.
+    """
     if indices is None:
         indices = list(range(num_samples))
 
@@ -148,7 +155,7 @@ def show_augmented_samples(
             mask = sample["mask"]
         else:
             image, mask = sample[:2]
-            
+
         show_image_mask(
             image=image,
             mask=mask,
@@ -167,6 +174,7 @@ def show_prediction(
     cfg,
     class_names=None,
 ):
+    """Display model prediction alongside input image and ground truth."""
     model.eval()
 
     if isinstance(sample, dict):
@@ -229,9 +237,9 @@ def overlay_mask_on_image(
     alpha: float = 0.45,
     ignore_index: int = 255,
 ):
-    """
-    PIL image 또는 numpy image 위에 segmentation mask를 overlay.
-    mask는 PIL / numpy / torch.Tensor 모두 지원.
+    """Overlay segmentation mask on image with transparency.
+
+    Supports PIL images, numpy arrays, and torch tensors for both image and mask.
     """
     if isinstance(image, Image.Image):
         image_np = np.array(image.convert("RGB"), dtype=np.float32)
@@ -247,7 +255,7 @@ def overlay_mask_on_image(
 
     color = mask_to_color(mask_np, ignore_index=ignore_index).astype(np.float32)
 
-    # background=0, ignore=255는 overlay 제외
+    # Only overlay foreground classes (exclude background=0 and ignore=255)
     fg = (mask_np != 0) & (mask_np != ignore_index)
 
     out = image_np.copy()
@@ -262,10 +270,7 @@ def make_panel(
     title_h: int = 24,
     bg=(255, 255, 255),
 ):
-    """
-    items: [(title, PIL.Image or numpy array), ...]
-    여러 이미지를 가로로 붙인 panel 생성.
-    """
+    #Create a horizontal panel of images with titles.
     from PIL import ImageDraw
 
     processed = []
@@ -307,8 +312,10 @@ def save_aug_comparison(
     std=(0.229, 0.224, 0.225),
     ignore_index: int = 255,
 ):
-    """
-    원본 PIL image/mask와 transform.py를 거친 tensor image/mask를 비교 저장.
+    """Save comparison panel of original and augmented image/mask pairs.
+
+    Creates a side-by-side comparison showing original image/mask and
+    augmented versions after applying transforms.
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)

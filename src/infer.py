@@ -1,5 +1,12 @@
 # src/infer.py
 
+"""
+Inference script for semantic segmentation model.
+
+This script loads a trained model and performs inference on a directory of images,
+saving the predicted segmentation masks to disk.
+"""
+
 import os
 from pathlib import Path
 
@@ -16,6 +23,12 @@ from src.utils.seed import set_seed
 
 
 class SubmitImageDataset(Dataset):
+    """Dataset for inference on submission images.
+
+    Loads images from a directory, resizes them to input size, and applies normalization.
+    Supports .jpg, .jpeg, and .png formats.
+    """
+
     def __init__(self, img_dir, input_size=512, mean=None, std=None):
         self.img_dir = Path(img_dir)
         self.input_size = input_size
@@ -58,6 +71,12 @@ def save_prediction(pred, save_path):
 
 
 def load_model_checkpoint(model, ckpt_path, device):
+    """Load model checkpoint from file.
+
+    Supports different checkpoint formats with keys 'model', 'model_state_dict', or direct state_dict.
+
+    Returns Model with loaded state dict
+    """
     checkpoint = torch.load(ckpt_path, map_location=device)
 
     if "model" in checkpoint:
@@ -87,7 +106,7 @@ def inference(model, data_loader, device, cfg):
         for i in range(outputs.shape[0]):
             name = image_names[i]
 
-            # original_sizes는 DataLoader에서 [widths, heights] 형태로 묶일 수 있음
+            # original_sizes may be batched as [widths, heights] from DataLoader
             if isinstance(original_sizes, (list, tuple)) and len(original_sizes) == 2:
                 orig_w = int(original_sizes[0][i])
                 orig_h = int(original_sizes[1][i])

@@ -1,3 +1,11 @@
+"""
+Checkpoint management utilities for saving and loading model states.
+
+This module provides functions to save training checkpoints including model weights,
+optimizer states, scheduler states, and training history. It also handles loading
+checkpoints to resume training from a specific point.
+"""
+
 import os
 import torch
 
@@ -45,6 +53,15 @@ def load_checkpoint(
     scaler=None,
     map_location="cpu",
 ):
+    """Load model checkpoint from file.
+    
+    Returns:
+        tuple: (start_epoch, best_val_miou, history, full_checkpoint_dict)
+            - start_epoch: Next epoch to start training from (current_epoch + 1)
+            - best_val_miou: Best validation mIoU from checkpoint
+            - history: Training history dictionary
+            - full_checkpoint_dict: Complete loaded checkpoint dictionary
+    """
     if not os.path.exists(load_path):
         raise FileNotFoundError(f"Checkpoint not found: {load_path}")
 
