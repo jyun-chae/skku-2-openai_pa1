@@ -13,6 +13,13 @@ project01/
 │   │   ├── config.py
 │   │   └── default.yaml
 │   ├── data/
+│   │   ├── aug_samples/
+│   │   │   ├── images/
+│   │   │   │   ├── 00?.png
+│   │   │   ├── masks/
+│   │   │   │   ├── 00?.png
+│   │   ├── aug_vis_samples/
+│   │   │   ├── 00?.png
 │   │   ├── build.py
 │   │   ├── transforms.py
 │   │   ├── voc.py
@@ -35,8 +42,7 @@ project01/
 ├── checkpoints/
 │   └── model.pth
 ├── submit/
-│   ├── img/
-│   └── pred/
+│   ├── img.zip -> not uploaded
 ├── main.ipynb
 ├── pyproject.toml
 └── README.md
