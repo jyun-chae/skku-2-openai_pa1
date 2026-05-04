@@ -64,7 +64,7 @@ training:
 
 checkpoint:
   save_dir: "/content/drive/MyDrive/project1_checkpoints"
-  resume_path: ""
+  resume_path: "/content/drive/MyDrive/project1_checkpoints/best2.pth"
 
 wandb:
   entity: "jyun_chae-sungkyunkwan-university"
