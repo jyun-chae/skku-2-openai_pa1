@@ -54,7 +54,21 @@ def main(cfg):
     # -------------------------
     # 5. Optimizer
     # -------------------------
-    optimizer = torch.optim.AdamW(
+    # optimizer = torch.optim.AdamW(
+    #     [
+    #         {"params": model.backbone.parameters(), "lr": cfg.training.backbone_lr},
+    #         {"params": model.lateral_c2.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.lateral_c3.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.lateral_c4.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.lateral_c5.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.smooth_c2.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.smooth_c3.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.smooth_c4.parameters(), "lr": cfg.training.head_lr},
+    #         {"params": model.head.parameters(), "lr": cfg.training.head_lr},
+    #     ],
+    #     weight_decay=cfg.training.weight_decay,
+    # )
+    optimizer = torch.optim.SGD(
         [
             {"params": model.backbone.parameters(), "lr": cfg.training.backbone_lr},
             {"params": model.lateral_c2.parameters(), "lr": cfg.training.head_lr},
@@ -66,7 +80,9 @@ def main(cfg):
             {"params": model.smooth_c4.parameters(), "lr": cfg.training.head_lr},
             {"params": model.head.parameters(), "lr": cfg.training.head_lr},
         ],
+        momentum=0.9,
         weight_decay=cfg.training.weight_decay,
+        nesterov=True,
     )
 
     # -------------------------
