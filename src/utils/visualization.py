@@ -213,3 +213,130 @@ def show_prediction(
 
     plt.tight_layout()
     plt.show()
+
+
+def pil_image_to_numpy(image: Image.Image):
+    return np.array(image.convert("RGB"))
+
+
+def pil_mask_to_numpy(mask: Image.Image):
+    return np.array(mask, dtype=np.int64)
+
+
+def overlay_mask_on_image(
+    image,
+    mask,
+    alpha: float = 0.45,
+    ignore_index: int = 255,
+):
+    """
+    PIL image 또는 numpy image 위에 segmentation mask를 overlay.
+    mask는 PIL / numpy / torch.Tensor 모두 지원.
+    """
+    if isinstance(image, Image.Image):
+        image_np = np.array(image.convert("RGB"), dtype=np.float32)
+    else:
+        image_np = np.array(image, dtype=np.float32)
+
+    if torch.is_tensor(mask):
+        mask_np = mask.detach().cpu().numpy()
+    elif isinstance(mask, Image.Image):
+        mask_np = np.array(mask, dtype=np.int64)
+    else:
+        mask_np = np.array(mask, dtype=np.int64)
+
+    color = mask_to_color(mask_np, ignore_index=ignore_index).astype(np.float32)
+
+    # background=0, ignore=255는 overlay 제외
+    fg = (mask_np != 0) & (mask_np != ignore_index)
+
+    out = image_np.copy()
+    out[fg] = (1.0 - alpha) * image_np[fg] + alpha * color[fg]
+
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+
+def make_panel(
+    items,
+    cell_w: int = 320,
+    title_h: int = 24,
+    bg=(255, 255, 255),
+):
+    """
+    items: [(title, PIL.Image or numpy array), ...]
+    여러 이미지를 가로로 붙인 panel 생성.
+    """
+    from PIL import ImageDraw
+
+    processed = []
+
+    for title, img in items:
+        if isinstance(img, np.ndarray):
+            img = Image.fromarray(img.astype(np.uint8))
+        elif torch.is_tensor(img):
+            img = Image.fromarray((tensor_to_image(img) * 255).astype(np.uint8))
+        else:
+            img = img.convert("RGB")
+
+        w, h = img.size
+        scale = cell_w / max(w, 1)
+        new_h = max(1, int(h * scale))
+        img = img.resize((cell_w, new_h), Image.Resampling.BILINEAR)
+        processed.append((title, img))
+
+    cell_h = max(img.size[1] for _, img in processed) + title_h
+    panel = Image.new("RGB", (cell_w * len(processed), cell_h), bg)
+    draw = ImageDraw.Draw(panel)
+
+    for i, (title, img) in enumerate(processed):
+        x = i * cell_w
+        panel.paste(img, (x, title_h))
+        draw.text((x + 6, 4), title, fill=(0, 0, 0))
+
+    return panel
+
+
+def save_aug_comparison(
+    save_path,
+    original_image: Image.Image,
+    original_mask: Image.Image,
+    aug_image: torch.Tensor,
+    aug_mask: torch.Tensor,
+    title: str = "aug",
+    mean=(0.485, 0.456, 0.406),
+    std=(0.229, 0.224, 0.225),
+    ignore_index: int = 255,
+):
+    """
+    원본 PIL image/mask와 transform.py를 거친 tensor image/mask를 비교 저장.
+    """
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    orig_mask_np = pil_mask_to_numpy(original_mask)
+    aug_img_np = (tensor_to_image(aug_image, mean=mean, std=std) * 255).astype(np.uint8)
+    aug_mask_np = aug_mask.detach().cpu().numpy().astype(np.int64)
+
+    orig_overlay = overlay_mask_on_image(
+        original_image,
+        orig_mask_np,
+        ignore_index=ignore_index,
+    )
+
+    aug_overlay = overlay_mask_on_image(
+        Image.fromarray(aug_img_np),
+        aug_mask_np,
+        ignore_index=ignore_index,
+    )
+
+    panel = make_panel([
+        ("orig image", original_image),
+        ("orig mask", mask_to_color(orig_mask_np, ignore_index=ignore_index)),
+        ("orig overlay", orig_overlay),
+        (f"aug image: {title}", aug_img_np),
+        ("aug mask", mask_to_color(aug_mask_np, ignore_index=ignore_index)),
+        ("aug overlay", aug_overlay),
+    ])
+
+    panel.save(save_path)
+    
