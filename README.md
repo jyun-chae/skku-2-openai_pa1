@@ -271,10 +271,10 @@ To reproduce the submitted prediction files:
 
 0. default prediction moves depend on resome_path and best.pth(if resome is none)
 
-'''yaml
+```yaml
 checkpoint:
   resume_path: ""
-'''
+```
 
 1. Put the final checkpoint at:
 
@@ -313,7 +313,7 @@ For FLOP's measure we need ONNX
 
 Make ONNX depends on checkpoints/best.pth
 
-'''python
+```python
 from pathlib import Path
 import os
 import torch
@@ -370,7 +370,7 @@ print("ONNX saved:", onnx_path)
 print("ONNX size MB:", onnx_path.stat().st_size / 1024 / 1024)
 
 files.download(str(onnx_path))
-'''
+```
 
 ## 11. WandB
 
