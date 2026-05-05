@@ -66,6 +66,13 @@ checkpoint:
   save_dir: "/content/drive/MyDrive/project1_checkpoints"
   resume_path: "/content/drive/MyDrive/project1_checkpoints/best2.pth"
 
+tta:
+  use: true
+  hflip: true
+  vflip: false
+  scales: [0.50, 0.625, 0.75, 0.875, 1.00, 1.125, 1.25, 1.50, 1.75, 2.00]
+  average_mode: prob
+
 wandb:
   entity: "jyun_chae-sungkyunkwan-university"
   project: "open_ai_proj1"
