@@ -147,9 +147,9 @@ def load_model_checkpoint(model: torch.nn.Module, ckpt_path: str | os.PathLike[s
 
 
 def resolve_checkpoint_path(cfg: Any) -> Path:
-    """Only works if /content/project01/checkpoint/model.pth exists, otherwise raises error.
+    """Only works if /content/project01/checkpoints/model.pth exists, otherwise raises error.
     """
-    ckpt_path = Path("/content/project01/checkpoint/model.pth")
+    ckpt_path = Path("/content/project01/checkpoints/model.pth")
     if ckpt_path.exists():
         return ckpt_path
     raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
