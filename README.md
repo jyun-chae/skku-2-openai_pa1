@@ -4,6 +4,8 @@ Open-Source AI Practice Project 1 semantic segmentation submission.
 
 This repository trains a CNN-based semantic segmentation model for Pascal-VOC style 21-class prediction. The final model uses a TorchVision EfficientNet-B3 ImageNet-1K classification pretrained backbone with an FPN-like neck and segmentation head.
 
+For some undefined situation run main.ipynb in colab background
+
 ## 1. Project Structure
 
 ```text
@@ -16,14 +18,15 @@ project01/
 │   │   ├── aug_samples/
 │   │   │   ├── images/
 │   │   │   │   ├── 00?.png
-│   │   │   ├── masks/
-│   │   │   │   ├── 00?.png
-│   │   ├── aug_vis_samples/
+│   │   │   └── masks/
+│   │   │       ├── 00?.png
+│   │   ├── aug_vis_results/
 │   │   │   ├── 00?.png
 │   │   ├── build.py
+│   │   ├── coco_voc.py
 │   │   ├── transforms.py
-│   │   ├── voc.py
-│   │   └── coco_voc.py
+│   │   ├── visualize_aug.py
+│   │   └── voc.py
 │   ├── engine/
 │   │   ├── checkpoint.py
 │   │   ├── evaluator.py
@@ -35,13 +38,19 @@ project01/
 │   ├── utils/
 │   │   ├── logger.py
 │   │   ├── metric.py
-│   │   └── seed.py
+│   │   ├── seed.py
+│   │   └── visualization.py
 │   ├── train.py
 │   ├── eval.py
-│   └── infer.py
+│   ├── infer.py
+│   └── main.ipynb
 ├── checkpoints/
+│   └── model.pth
 ├── submit/
-│   ├── img.zip -> not uploaded
+│   ├── img/
+│   └── pred/
+├── tools/
+│   └── grader_flops.py
 ├── main.ipynb
 ├── pyproject.toml
 └── README.md
@@ -269,25 +278,27 @@ Each output PNG stores class indices in `[0, 20]`.
 
 To reproduce the submitted prediction files:
 
-0. default prediction moves depend on resome_path and best.pth(if resome is none)
+1. Ensure the final checkpoint is located at `/content/project01/checkpoint/model.pth` (such as best.pth).
 
-```yaml
-checkpoint:
-  resume_path: ""
+2. Make sure that there are imgs in `cfg.submit.img_dir` (default: `submit/img`) -> look at 8. Inference
+
+3. Run inference using Python:
+
+```bash
+python -m src.infer
 ```
 
-1. Put the final checkpoint at:
+Or in main.ipynb:
 
-```text
-checkpoints/model.pth
+```python
+from src.config.config import load_config
+from src.infer import main as infer_main
+
+cfg = load_config("src/config/default.yaml")
+infer_main(cfg)
 ```
 
-2. Set `cfg.checkpoint.resume_path` in `src/config/default.yaml` to:
-
-```yaml
-checkpoint:
-  resume_path: checkpoints/model.pth
-```
+The predictions will be saved as PNG files in the directory specified by `cfg.submit.pred_dir` (default: `submit/pred`), with filenames matching the input images and containing class indices in the range [0, 20].
 
 3. Put test images in:
 
@@ -311,7 +322,7 @@ submit/pred/
 
 For FLOP's measure we need ONNX
 
-Make ONNX depends on checkpoints/best.pth
+Make ONNX depends on checkpoints/model.pth
 
 ```python
 from pathlib import Path
@@ -321,14 +332,9 @@ import onnx
 from google.colab import files
 
 from src.models.build import build_model
+from src.infer import resolve_checkpoint_path
 
-ckpt_path = getattr(cfg.checkpoint, "resume_path", "")
-if ckpt_path is None or ckpt_path == "":
-    ckpt_path = os.path.join(cfg.checkpoint.save_dir, "best.pth")
-
-ckpt_path = Path(ckpt_path)
-if not ckpt_path.exists():
-    raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+ckpt_path = resolve_checkpoint_path(cfg)
 
 model = build_model(cfg).to(device)
 checkpoint = torch.load(ckpt_path, map_location=device)

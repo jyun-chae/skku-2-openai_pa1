@@ -147,36 +147,12 @@ def load_model_checkpoint(model: torch.nn.Module, ckpt_path: str | os.PathLike[s
 
 
 def resolve_checkpoint_path(cfg: Any) -> Path:
-    """Choose checkpoint path from cfg.
-
-    Priority:
-      1. cfg.checkpoint.resume_path, if non-empty
-      2. cfg.checkpoint.save_dir/best.pth
-      3. cfg.checkpoint.save_dir/last.pth
-      4. cfg.checkpoint.save_dir/model.pth
+    """Only works if /content/project01/checkpoint/model.pth exists, otherwise raises error.
     """
-    resume_path = str(cfg_get(cfg, "checkpoint.resume_path", "") or "").strip()
-
-    if resume_path:
-        ckpt_path = Path(resume_path)
-        if ckpt_path.exists():
-            return ckpt_path
-        raise FileNotFoundError(f"Checkpoint not found from cfg.checkpoint.resume_path: {ckpt_path}")
-
-    save_dir = Path(cfg_get(cfg, "checkpoint.save_dir", "checkpoints"))
-    candidates = [
-        save_dir / "best.pth",
-        save_dir / "last.pth",
-        save_dir / "model.pth",
-    ]
-
-    for path in candidates:
-        if path.exists():
-            return path
-
-    raise FileNotFoundError(
-        "No checkpoint found. Checked: " + ", ".join(str(p) for p in candidates)
-    )
+    ckpt_path = Path("/content/project01/checkpoint/model.pth")
+    if ckpt_path.exists():
+        return ckpt_path
+    raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
 
 # -----------------------------------------------------------------------------
