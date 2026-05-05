@@ -45,6 +45,10 @@ IMAGE_EXTENSIONS = ("*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG")
 def cfg_get(cfg: Any, path: str, default: Any = None) -> Any:
     """Safely read nested values from SimpleNamespace or dict configs.
 
+    This helper allows config objects to be accessed with dot-separated paths.
+    It returns the default if any intermediate key is missing or if the config
+    node becomes None.
+
     Examples:
         cfg_get(cfg, "data.input_size", 512)
         cfg_get(cfg, "tta.scales", [1.0])
@@ -228,6 +232,7 @@ def predict_single(
     image = Image.open(image_path).convert("RGB")
     orig_w, orig_h = image.size
 
+    # Read image normalization and size config values.
     mean = cfg_get(cfg, "data.mean", [0.485, 0.456, 0.406])
     std = cfg_get(cfg, "data.std", [0.229, 0.224, 0.225])
     base_size = int(cfg_get(cfg, "data.input_size", 512))
@@ -236,6 +241,8 @@ def predict_single(
 
     scales = tta_cfg["scales"] if tta_cfg["use"] else [1.0]
 
+    # Build the list of TTA views to evaluate: original, horizontal flip,
+    # vertical flip, and both flips if configured.
     flip_settings: List[Tuple[bool, bool]] = [(False, False)]
     if tta_cfg["use"] and tta_cfg["hflip"]:
         flip_settings.append((True, False))
@@ -259,6 +266,7 @@ def predict_single(
 
             x = pil_to_tensor(view, view_size, mean, std).to(device, non_blocking=True)
 
+            # Run the model inside AMP autocast if enabled and supported.
             with autocast_context(device, use_amp):
                 logits = model(x)
 
@@ -289,6 +297,7 @@ def predict_single(
     if accumulator is None or num_views == 0:
         raise RuntimeError("No inference views were generated. Check cfg.tta.scales.")
 
+    # Average the collected scores across all TTA views and take the argmax.
     pred = (accumulator / num_views).argmax(dim=1)[0]
     pred = pred.clamp(0, num_classes - 1).cpu().numpy().astype(np.uint8)
     return pred
@@ -303,6 +312,7 @@ def inference(model: torch.nn.Module, data_loader: DataLoader, device: torch.dev
     logger = get_logger()
     model.eval()
 
+    # Create the prediction output directory if necessary.
     pred_dir = Path(cfg_get(cfg, "submit.pred_dir", "/content/project01/submit/pred"))
     pred_dir.mkdir(parents=True, exist_ok=True)
 
@@ -327,6 +337,7 @@ def inference(model: torch.nn.Module, data_loader: DataLoader, device: torch.dev
                 tta_cfg=tta_cfg,
             )
 
+            # Save each prediction with the same root filename but PNG extension.
             base_name = Path(image_name).stem
             save_path = pred_dir / f"{base_name}.png"
             save_prediction(pred, save_path)
@@ -339,6 +350,7 @@ def inference(model: torch.nn.Module, data_loader: DataLoader, device: torch.dev
 
 
 def main(cfg: Any) -> None:
+    # Set random seeds for reproducible inference behavior.
     seed = int(cfg_get(cfg, "runtime.seed", 42))
     set_seed(seed)
 
@@ -376,6 +388,7 @@ def main(cfg: Any) -> None:
 
     model = build_model(cfg).to(device)
 
+    # Load weights from the selected checkpoint and restore the model state.
     ckpt_path = resolve_checkpoint_path(cfg)
     logger.info(f"Loading checkpoint: {ckpt_path}")
     model = load_model_checkpoint(model, ckpt_path, device)
