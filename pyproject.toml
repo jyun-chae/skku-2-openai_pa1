@@ -22,6 +22,7 @@ dependencies = [
   "wandb>=0.15",
   "pycocotools>=2.0.6",
   "onnx>=1.14"
+  "onnxscript>=0.1.0"
 ]
 
 [tool.setuptools]
