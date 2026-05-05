@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skku-openai-pa1"
+version = "0.1.0"
+description = "Project 01 semantic segmentation codebase for SKKU Open-Source AI Practice"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "jyun-chae" }
+]
+dependencies = [
+  "torch>=2.0",
+  "torchvision>=0.15",
+  "numpy>=1.23",
+  "Pillow>=9.0",
+  "PyYAML>=6.0",
+  "tqdm>=4.64",
+  "matplotlib>=3.6",
+  "wandb>=0.15",
+  "pycocotools>=2.0.6",
+  "onnx>=1.14"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = [
+  "checkpoints*",
+  "submit*",
+  "tools*",
+  "notebooks*",
+  "data*",
+  "datasets*"
+]
